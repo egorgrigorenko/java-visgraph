@@ -35,7 +35,7 @@ public class VisibleGraphGeneratorTest
         assertEquals(0, graph.getEdges().size());
     }
 
-//    @Test
+    @Test
     public void addObstacles_givenTriangle_whenGetGraph_thenCorrect() {
         // given
         VisibleGraphGenerator graphGenerator = new VisibleGraphGenerator();
