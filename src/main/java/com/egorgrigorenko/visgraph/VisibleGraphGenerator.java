@@ -123,10 +123,6 @@ public class VisibleGraphGenerator
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
-//    private double getAngle(Coordinate v, Coordinate w) {
-//        double angle =
-//    }
-
     @SuppressWarnings("unchecked")
     private Node getNodeByCoordinate(Coordinate c) {
         Collection<Node> nodes = graph.getNodes();
