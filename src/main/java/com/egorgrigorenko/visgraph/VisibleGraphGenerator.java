@@ -1,5 +1,6 @@
 package com.egorgrigorenko.visgraph;
 
+import com.vividsolutions.jts.algorithm.CGAlgorithms;
 import com.vividsolutions.jts.geom.*;
 import com.vividsolutions.jts.math.Vector2D;
 import org.geotools.geometry.jts.JTSFactoryFinder;
@@ -11,14 +12,15 @@ import org.geotools.graph.structure.basic.BasicEdge;
 import org.geotools.graph.structure.basic.BasicNode;
 
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class VisibleGraphGenerator
 {
     private Graph graph;
-    private ArrayList<Coordinate> allVertices;
+    private ArrayList<Node> allVertices;
     private ArrayList<Polygon> obstacles;
-    private TreeMap<Double, Geometry> intersectedSegments;
+    private TreeMap<Double, ArrayList<Geometry>> intersectedSegments;
 
     public VisibleGraphGenerator() {
         BasicLineGraphGenerator graphGen = new BasicLineGraphGenerator();
@@ -32,56 +34,142 @@ public class VisibleGraphGenerator
     public void addObstacles(Collection<Polygon> obstacles) {
         this.obstacles.addAll(obstacles);
         initObstacleVertices(obstacles);
-        initGraph(obstacles);
+        initGraph();
 
-        for (Coordinate v: allVertices) {
-            Collection<Coordinate> visibleVertices = getVisibleVertices(v, obstacles);
-            Node vNode = getNodeByCoordinate(v);
-
-            for (Coordinate w: visibleVertices) {
-                Node wNode = getNodeByCoordinate(w);
-                Edge e = new BasicEdge(vNode, wNode);
+        for (Node v: allVertices) {
+            Collection<Node> visibleVertices = getVisibleVertices(v, obstacles);
+            for (Node w: visibleVertices) {
+                Edge e = new BasicEdge(v, w);
                 graph.getEdges().add(e);
             }
         }
     }
 
+
     private void initObstacleVertices(Collection<Polygon> obstacles) {
-        HashSet<Coordinate> coordinates = new HashSet<>();
-
         for (Polygon p: obstacles) {
-            coordinates.addAll(Arrays.asList(p.getCoordinates()));
-        }
+            Coordinate[] extCoords = p.getExteriorRing().getCoordinates();
+            for (int j = 0; j < extCoords.length - 1; ++j) {
+                Node n = new BasicNode();
+                n.setObject(extCoords[j]);
+                allVertices.add(n);
+            }
 
-        allVertices.addAll(coordinates);
-    }
-
-    @SuppressWarnings("unchecked")
-    private void initGraph(Collection<Polygon> obstacles) {
-        Collection<Node> graphNodes = graph.getNodes();
-
-        for (Polygon p: obstacles) {
-            for (Coordinate c: allVertices) {
-                BasicNode node = new BasicNode();
-                node.setObject(c);
-                graphNodes.add(node);
+            for (int j = 0; j < p.getNumInteriorRing(); ++j) {
+                Coordinate[] intCoords = p.getInteriorRingN(j).getCoordinates();
+                for (int i = 0; j < intCoords.length - 1; ++i) {
+                    Node n = new BasicNode();
+                    n.setObject(intCoords[i]);
+                    allVertices.add(n);
+                }
             }
         }
     }
 
-    private Collection<Coordinate> getVisibleVertices(Coordinate v, Collection<Polygon> obstacles) {
-        ArrayList<Coordinate> visibleVertices = new ArrayList<>();
 
-        Collection<Coordinate> sortedVerticesByAngle = sortVerticesByAngle(v, allVertices);
+    @SuppressWarnings("unchecked")
+    private void initGraph() {
+        Collection<Node> graphNodes = graph.getNodes();
+        for (Node v: allVertices) {
+            graphNodes.add(v);
+        }
+    }
+
+    private Collection<Node> getVisibleVertices(Node v, Collection<Polygon> obstacles) {
+        ArrayList<Node> visibleVertices = new ArrayList<>();
+
+        Collection<Node> sortedVerticesByAngle = sortVerticesByAngle(v, allVertices);
         initIntersectedSegments(v);
+        for (Node w: sortedVerticesByAngle) {
+            if (v.equals(w)) {
+                continue;
+            }
+
+            if (isVisible(v, w)) {
+                visibleVertices.add(w);
+            }
+
+            addCwSideEdges(v, w);
+            removeCcwSideEdges(v, w);
+        }
 
         return visibleVertices;
     }
 
-    private void initIntersectedSegments(Coordinate v) {
+    @SuppressWarnings("unchecked")
+    private void removeCcwSideEdges(Node v, Node w) {
+        List<Edge> edges = w.getEdges();
+        for (Edge edge: edges) {
+            Node n = edge.getOtherNode(w);
+            if (n.equals(v)) {
+                continue;
+            }
+
+            Coordinate vc = (Coordinate) v.getObject();
+            Coordinate wc = (Coordinate) w.getObject();
+            Coordinate nc = (Coordinate) n.getObject();
+
+            boolean isCcw = CGAlgorithms.isCCW(new Coordinate[]{vc, wc, nc});
+
+            GeometryFactory geometryFactory = JTSFactoryFinder.getGeometryFactory();
+            Geometry eg = geometryFactory.createLineString(new Coordinate[] {
+                    wc,nc });
+
+            Geometry vp = geometryFactory.createPoint(vc);
+            Geometry wp = geometryFactory.createPoint(wc);
+            double distance = vp.distance(wp);
+
+            ArrayList<Geometry> cwEdges = intersectedSegments.get(distance);
+            if (cwEdges != null) {
+                cwEdges.removeIf((Geometry g) -> g.equals(eg));
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void addCwSideEdges(Node v, Node w) {
+        List<Edge> edges = w.getEdges();
+        for (Edge edge: edges) {
+            Node n = edge.getOtherNode(w);
+            if (n.equals(v)) {
+                continue;
+            }
+
+            Coordinate vc = (Coordinate)v.getObject();
+            Coordinate wc = (Coordinate)w.getObject();
+            Coordinate nc = (Coordinate)n.getObject();
+
+            boolean isCcw = CGAlgorithms.isCCW(new Coordinate[] { vc, wc, nc });
+
+            if (isCcw) {
+                continue;
+            }
+
+            GeometryFactory geometryFactory = JTSFactoryFinder.getGeometryFactory();
+            Geometry vp = geometryFactory.createPoint(vc);
+            Geometry wp = geometryFactory.createPoint(wc);
+            double distance = vp.distance(wp);
+
+            Geometry eg = geometryFactory.createLineString(new Coordinate[] {
+                    wc,nc });
+
+            ArrayList<Geometry> geometries = intersectedSegments.get(distance);
+            if (geometries == null) {
+                ArrayList<Geometry> cwEdges = new ArrayList<>();
+                cwEdges.add(eg);
+                intersectedSegments.put(distance, cwEdges);
+            } else {
+                geometries.add(eg);
+            }
+        }
+    }
+
+    private void initIntersectedSegments(Node v) {
+        Coordinate vCoord = (Coordinate)v.getObject();
         GeometryFactory geometryFactory = JTSFactoryFinder.getGeometryFactory();
         Geometry vRay = geometryFactory.createLineString(
-                new Coordinate[] {v, new Coordinate(v.x, Double.POSITIVE_INFINITY)});
+                new Coordinate[] {vCoord, new Coordinate(vCoord.x,
+                        Double.POSITIVE_INFINITY)});
 
         for (Polygon p: obstacles) {
             // process exterior
@@ -103,25 +191,34 @@ public class VisibleGraphGenerator
                     new Coordinate[] {coords[j], coords[j + 1]});
             if (ray.crosses(segment)) {
                 double distance = ray.distance(segment);
-                intersectedSegments.put(distance, segment);
+
+                ArrayList<Geometry> geometries = intersectedSegments.get(distance);
+                if (geometries == null) {
+                    geometries = new ArrayList<>();
+                    geometries.add(segment);
+                    intersectedSegments.put(distance, geometries);
+                } else {
+                    geometries.add(segment);
+                }
             }
         }
     }
 
-    protected Collection<Coordinate> sortVerticesByAngle(Coordinate v, Collection<Coordinate> vertices) {
-
+    protected Collection<Node> sortVerticesByAngle(Node v, Collection<Node> vertices) {
         class AngleVertex {
             public double angle;
-            public Coordinate c;
+            public Node v;
 
-            public AngleVertex(Coordinate p, Coordinate c) {
-                angle = calcAngle(p, c);
-                this.c = c;
+            public AngleVertex(Node p, Node w) {
+                angle = calcAngle(p, w);
+                v = w;
             }
 
-            private double calcAngle(Coordinate pC, Coordinate vC) {
+            private double calcAngle(Node p, Node w) {
+                Coordinate pC = (Coordinate)p.getObject();
+                Coordinate wC = (Coordinate)w.getObject();
                 Vector2D v1 = new Vector2D(pC, new Coordinate(pC.x + 1, pC.y));
-                Vector2D v2 = new Vector2D(pC, vC);
+                Vector2D v2 = new Vector2D(pC, wC);
 
                 double angle = v1.angleTo(v2);
                 if (angle < 0) {
@@ -130,7 +227,7 @@ public class VisibleGraphGenerator
 
                 return angle;
             }
-        };
+        }
 
         Comparator<AngleVertex> comparator = (w1, w2) -> {
             if (w1.angle > w2.angle) {
@@ -139,35 +236,24 @@ public class VisibleGraphGenerator
                 return 1;
             }
 
-            Vector2D v1 = new Vector2D(v, w1.c);
-            Vector2D v2 = new Vector2D(v, w2.c);
+            Coordinate pc = (Coordinate)v.getObject();
+            Vector2D v1 = new Vector2D(pc, (Coordinate)w1.v.getObject());
+            Vector2D v2 = new Vector2D(pc, (Coordinate)w2.v.getObject());
 
             return v1.length() < v2.length() ? -1 : 1;
         };
 
         TreeSet<AngleVertex> sortedAngleVertices = new TreeSet<>(comparator);
 
-        for (Coordinate c: vertices) {
+        for (Node c: vertices) {
             if (v.equals(c)) {
                 continue;
             }
             sortedAngleVertices.add(new AngleVertex(v, c));
         }
 
-        return sortedAngleVertices.stream().map(av -> av.c)
+        return sortedAngleVertices.stream().map(av -> av.v)
                 .collect(Collectors.toCollection(ArrayList::new));
-    }
-
-    @SuppressWarnings("unchecked")
-    private Node getNodeByCoordinate(Coordinate c) {
-        Collection<Node> nodes = graph.getNodes();
-        for (Node n: nodes) {
-            if (n.getObject().equals(c)) {
-                return n;
-            }
-        }
-
-        return null;
     }
 
     public Graph getGraph() {

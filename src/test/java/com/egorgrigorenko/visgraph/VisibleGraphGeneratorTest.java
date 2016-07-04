@@ -8,6 +8,7 @@ import org.geotools.geometry.jts.JTSFactoryFinder;
 import org.geotools.graph.structure.Edge;
 import org.geotools.graph.structure.Graph;
 import org.geotools.graph.structure.Node;
+import org.geotools.graph.structure.basic.BasicNode;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -35,8 +36,9 @@ public class VisibleGraphGeneratorTest
         assertEquals(0, graph.getEdges().size());
     }
 
+
     @Test
-    public void addObstacles_givenTriangle_whenGetGraph_thenCorrect() {
+    public void addObstacles_triangle_correctGraph() {
         // given
         VisibleGraphGenerator graphGenerator = new VisibleGraphGenerator();
 
@@ -105,21 +107,27 @@ public class VisibleGraphGeneratorTest
     @Test
     public void sortVerticesByAngle_givenVertices_whenSort_thenSorted() {
         // given
-        ArrayList<Coordinate> vertices = new ArrayList<>();
-        Coordinate v1 = new Coordinate(1, 1);
-        Coordinate v2 = new Coordinate(4, 4);
-        Coordinate v3 = new Coordinate(6, 0);
+        Coordinate vc1 = new Coordinate(1, 1);
+        Coordinate vc2 = new Coordinate(4, 4);
+        Coordinate vc3 = new Coordinate(6, 0);
+        ArrayList<Node> vertices = new ArrayList<>();
+        Node v1 = new BasicNode();
+        v1.setObject(vc1);
+        Node v2 = new BasicNode();
+        v2.setObject(vc2);
+        Node v3 = new BasicNode();
+        v3.setObject(vc3);
         vertices.addAll(Arrays.asList(v1, v2, v3));
 
         // when
         VisibleGraphGenerator graphGenerator = new VisibleGraphGenerator();
-        Collection<Coordinate> sortedVertices1 = graphGenerator
+        Collection<Node> sortedVertices1 = graphGenerator
                 .sortVerticesByAngle(v1, vertices);
 
-        Collection<Coordinate> sortedVertices2 = graphGenerator
+        Collection<Node> sortedVertices2 = graphGenerator
                 .sortVerticesByAngle(v2, vertices);
 
-        Collection<Coordinate> sortedVertices3 = graphGenerator
+        Collection<Node> sortedVertices3 = graphGenerator
                 .sortVerticesByAngle(v3, vertices);
 
         // assert
@@ -131,21 +139,29 @@ public class VisibleGraphGeneratorTest
     @Test
     public void sortVerticesByAngle_oneVerticeOnRay_closestEarlier() {
         // given
-        ArrayList<Coordinate> vertices = new ArrayList<>();
-        Coordinate v1 = new Coordinate(1, 1);
-        Coordinate v2 = new Coordinate(4, 4);
-        Coordinate v3 = new Coordinate(6, 1);
-        Coordinate v4 = new Coordinate(7, 1);
+        Coordinate vc1 = new Coordinate(1, 1);
+        Coordinate vc2 = new Coordinate(4, 4);
+        Coordinate vc3 = new Coordinate(6, 1);
+        Coordinate vc4 = new Coordinate(7, 1);
+        ArrayList<Node> vertices = new ArrayList<>();
+        Node v1 = new BasicNode();
+        v1.setObject(vc1);
+        Node v2 = new BasicNode();
+        v2.setObject(vc2);
+        Node v3 = new BasicNode();
+        v3.setObject(vc3);
+        Node v4 = new BasicNode();
+        v4.setObject(vc4);
         vertices.addAll(Arrays.asList(v1, v2, v3, v4));
 
         // when
         VisibleGraphGenerator graphGenerator = new VisibleGraphGenerator();
-        Collection<Coordinate> sortedVertices1 = graphGenerator
+        Collection<Node> sortedVertices1 = graphGenerator
                 .sortVerticesByAngle(v1, vertices);
 
         vertices.clear();
         vertices.addAll(Arrays.asList(v1, v2, v4, v3));
-        Collection<Coordinate> sortedVertices2 = graphGenerator
+        Collection<Node> sortedVertices2 = graphGenerator
                 .sortVerticesByAngle(v1, vertices);
 
         // then
